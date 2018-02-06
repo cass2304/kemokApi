@@ -16,6 +16,14 @@ module.exports = {
   generalPassword: "Hol@.Mund0",
   collections:"",
 
+  db: {
+    host: "dev-kemok-bac.cg9u5bhsoxjc.us-east-1.rds.amazonaws.com",
+    port: 5432,
+    user: "kemokadmin",
+    password: "$q%$=0#TyCI1.",
+    database:"backemok"
+  },
+
   ip:'127.0.0.1',
-  port:9000
+  port:9001
 };
