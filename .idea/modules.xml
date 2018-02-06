@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/kemok-bac.iml" filepath="$PROJECT_DIR$/.idea/kemok-bac.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kemok-bac.iml" filepath="$PROJECT_DIR$/kemok-bac.iml" />
     </modules>
   </component>
 </project>
