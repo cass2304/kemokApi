@@ -7,6 +7,8 @@ var router = express.Router();
 
 router.post('/',  userController.createNewAgency);
 
+router.post('/fromDb',  userController.createAgencyFromDB);
+
 router.get('/createUserAgencyByBatch',  userController.createNewAgencyByBatch);
 
 router.get('/createUserRegionByBatch',  userController.createUserRegionByBatch);

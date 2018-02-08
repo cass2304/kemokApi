@@ -1,4 +1,24 @@
 'use strict';
+const os = require('os');
+const ifaces = os.networkInterfaces();
+let serverIp;
+
+Object.keys(ifaces).forEach(function (ifname) {
+  var alias = 0;
+
+  ifaces[ifname].forEach(function (iface) {
+    if ('IPv4' !== iface.family || iface.internal !== false) {
+      return;
+    }
+
+    if (alias >= 1) {
+      serverIp = iface.address;
+    } else {
+      serverIp = iface.address;
+    }
+    ++alias;
+  });
+});
 
 // Development specific configuration
 // ==================================
@@ -33,6 +53,6 @@ module.exports = {
     database:"ebdb"
   },
 
-  ip:'127.0.0.1',
+  ip: '0.0.0.0',
   port:9001
 };
