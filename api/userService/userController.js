@@ -16,7 +16,7 @@ const options = {
 
 module.exports.createNewAgency = async (req, res) => {
 
-  if (_.isArray(req.body.username) && req.body.originCollection && req.body.originDashboard) {
+  if (_.isArray(req.body.username) && req.body.originCollection && req.body.originDashboard && req.body.originView) {
 
     const client = new Client(config.dbMetabase);
 
@@ -53,7 +53,7 @@ module.exports.createNewAgency = async (req, res) => {
             options.body = {
               first_name: user,
               last_name: user,
-              email: user + "@baccredomatic.gt",
+              email: user.toLowerCase() + "@baccredomatic.gt",
               password: user + config.generalPassword
             };
 
@@ -93,7 +93,7 @@ module.exports.createNewAgency = async (req, res) => {
 
                       let newQuery = JSON.parse(card.dataset_query);
 
-                      newQuery.native.query = newQuery.native.query.replace(req.body.originCollection, user);
+                      newQuery.native.query = newQuery.native.query.replace(req.body.originView, user);
 
                       newQuery = JSON.stringify(newQuery);
 
@@ -187,7 +187,8 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
     return res.status(200).json(users.rows);
 
-  }
+  });
+}
 
   /*
   * create agency by bath }
@@ -224,14 +225,14 @@ module.exports.createAgencyFromDB = async (req, res) => {
           if (error) res.status(400).json({message: "ERROR_AUTHENTICATING_USER"})
           options.url = config.metabase.uri + config.users;
 
-          _async.each(queryResponse.rows, (agency, callback) => {
-            console.log('creating ...', agency);
-            options.body = {
-              first_name: agency.oficial,
-              last_name: agency.agencia,
-              email: agency.oficial + "@baccredomatic.gt",
-              password: agency.oficial + config.generalPassword
-            };
+        _async.each(queryResponse.rows, (agency, callback) => {
+
+          options.body = {
+            first_name: agency.oficial,
+            last_name: agency.agencia,
+            email: agency.oficial.toLowerCase()+"@baccredomatic.gt",
+            password: agency.oficial+config.generalPassword
+          };
 
             Request(options, function (error, response, userBody) {
               if (error) return callback(error);
@@ -293,12 +294,12 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
           _async.each(queryResponse.rows, (agency, callback) => {
 
-            options.body = {
-              first_name: 'REGION',
-              last_name: agency.region,
-              email: agency.region + "@baccredomatic.gt",
-              password: agency.oficial + config.generalPassword
-            };
+          options.body = {
+            first_name: 'REGION',
+            last_name: agency.region,
+            email: agency.region.toLowerCase()+"@baccredomatic.gt",
+            password: agency.region+config.generalPassword
+          };
 
             Request(options, function (error, response, userBody) {
               if (error) return callback(error);

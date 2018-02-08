@@ -26,8 +26,8 @@ module.exports = {
   metabase: {
     uri: 'http://metabase-2n3qs-env.us-east-1.elasticbeanstalk.com'
   },
-  username: "cesar.augs@gmail.com",
-  password: "holamundo.123456",
+  username: "tech@kemok.io",
+  password: "0iX2op0xOmiBaT",
   card: "/api/card",
   auth:"/api/session",
   users:"/api/user",
