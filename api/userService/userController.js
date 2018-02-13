@@ -98,7 +98,11 @@ module.exports.createNewAgency = async (req, res) => {
                       _async.each(Object.keys(newQuery.native.template_tags), (key, callb) => {
                         client.query("Select b.id from metabase_table a inner join metabase_field b ON a.name = b.table_id where a.name = $1 and b.name = $2 ",[originView,key], (err, resp) => {
                           if (err) callb(err);
+                          console.log("/////////");
+                          console.log("originView ",originView);
+                          console.log("KEY ",key);
                           console.log(resp.rows);
+                          console.log("/////////");
                             newQuery.native.template_tags["" + key + ""].dimension = ["field-id", resp.rows[0].id];
                             callb();
                         });
