@@ -14,6 +14,17 @@ const options = {
 * { username: [array of agencys ] }
 */
 
+/* POST BODY USERS DOESN'T EXISTS
+
+{
+	"username":["r42"],
+	"originCollection":"Dashboards modelo",
+	"originDashboard": "*Monitoreo",
+	"originView": "gv"
+}
+
+ */
+
 module.exports.createNewAgency = async (req, res) => {
 
   if (_.isArray(req.body.username) && req.body.originCollection && req.body.originDashboard && req.body.originView) {
@@ -103,9 +114,9 @@ module.exports.createNewAgency = async (req, res) => {
                       originView = originView.split("\n")[0];
 
                       _async.each(Object.keys(newQuery.native.template_tags), (key, callb) => {
-                        client.query("Select b.id from metabase_table a inner join metabase_field b ON a.name = b.table_id where a.name = $1 and b.name = $2 ",[originView,key], (err, resp) => {
+                        client.query("Select b.id from metabase_table a inner join metabase_field b ON a.id = b.table_id where a.name = $1 and b.name = $2 ", [originView, key], (err, resp) => {
                           if (err) callb(err);
-                          if(resp.rows.length > 0)
+                          if (resp.rows.length > 0)
                             newQuery.native.template_tags["" + key + ""].dimension = ["field-id", resp.rows[0].id];
                           callb();
                         });
@@ -177,6 +188,17 @@ module.exports.createNewAgency = async (req, res) => {
     return res.status(400).json({message: "Missing_params"});
   }
 };
+
+/* POST BODY USERS EXISTS
+
+{
+	"username":["r42"],
+	"originCollection":"Dashboards modelo",
+	"originDashboard": "*Monitoreo",
+	"originView": "gv"
+}
+
+ */
 
 module.exports.createAgencyFromDB = async (req, res) => {
 

@@ -1,6 +1,12 @@
 const config = require('../../config/environment/development');
 const {Client} = require('pg');
 
+/*
+{
+  "field":"agencia"
+}
+ */
+
 module.exports.updateFields = async (req, res) => {
 
   const client = new Client(config.dbMetabase);
