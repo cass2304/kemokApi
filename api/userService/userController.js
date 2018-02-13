@@ -190,13 +190,22 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
   const queryResponse = await client.query(`SELECT *, a.visualization_settings vis_set_dashboard_card, b.visualization_settings vis_set_report_card from report_card B INNER JOIN report_dashboardcard A on A.card_id = B.id where b.collection_id = ${collectionId.rows[0].id} and dashboard_id = ${dashboardInfo.rows[0].id}`);
 
-  const users = await client.query('SELECT * FROM core_user where is_superuser = false and is_active = true  and id in (390,389,385,379) order by first_name asc limit 5');
+
+  let varToSend = JSON.stringify(req.body.username).replace("[","").replace("]","");
+
+  while (varToSend.indexOf("\"") > -1){
+    varToSend = varToSend.replace("\"","'");
+  }
+
+  const users = await client.query("SELECT * FROM core_user where is_superuser = false and is_active = true and first_name in  ("+varToSend+")  order by first_name asc limit 4");
 
   options.url = config.metabase.uri + config.auth;
   options.body = {
     username: config.username,
     password: config.password
   };
+
+  //if (users.rows)
 
   Request(options, function (error, response, metaBody) {
     if (error) return res.status(400).json({message: "Error on auth with metabase service"});
