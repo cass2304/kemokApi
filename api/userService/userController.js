@@ -103,6 +103,7 @@ module.exports.createNewAgency = async (req, res) => {
                           console.log("KEY ",key);
                           console.log(resp.rows);
                           console.log("/////////");
+                          if(resp.rows.length > 0)
                             newQuery.native.template_tags["" + key + ""].dimension = ["field-id", resp.rows[0].id];
                             callb();
                         });
