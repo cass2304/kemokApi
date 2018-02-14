@@ -226,20 +226,20 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
   await client.connect();
 
-  const collectionId  = await client.query(`SELECT id from collection where name = '${req.body.originCollection}' `);
+  const collectionId = await client.query(`SELECT id from collection where name = '${req.body.originCollection}' `);
 
   const dashboardInfo = await client.query(`SELECT * from report_dashboard where name = '${req.body.originDashboard}' `);
 
   const queryResponse = await client.query(`SELECT *, a.visualization_settings vis_set_dashboard_card, b.visualization_settings vis_set_report_card from report_card B INNER JOIN report_dashboardcard A on A.card_id = B.id where b.collection_id = ${collectionId.rows[0].id} and dashboard_id = ${dashboardInfo.rows[0].id}`);
 
 
-  let varToSend = JSON.stringify(req.body.username).replace("[","").replace("]","");
+  let varToSend = JSON.stringify(req.body.username).replace("[", "").replace("]", "");
 
-  while (varToSend.indexOf("\"") > -1){
-    varToSend = varToSend.replace("\"","'");
+  while (varToSend.indexOf("\"") > -1) {
+    varToSend = varToSend.replace("\"", "'");
   }
 
-  const users = await client.query("SELECT * FROM core_user where is_superuser = false and is_active = true and first_name in  ("+varToSend+")  order by first_name asc limit 4");
+  const users = await client.query("SELECT * FROM core_user where is_superuser = false and is_active = true and first_name in  (" + varToSend + ")  order by first_name asc limit 4");
 
   options.url = config.metabase.uri + config.auth;
   options.body = {
@@ -247,7 +247,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
     password: config.password
   };
 
-  //if (users.rows)
+  if (users.rows.length === 0) return res.status(404).json({message: "user_does_not_exist_on_db"});
 
   Request(options, function (error, response, metaBody) {
     if (error) return res.status(400).json({message: "Error on auth with metabase service"});
@@ -300,7 +300,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
                         })
                       });
                       options.method = 'POST';
-                    }else {
+                    } else {
                       collection = collectionBody;
                     }
 
@@ -311,7 +311,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                       jsonToParse = JSON.stringify(jsonToParse);
 
-                      let dashboardName = req.body.originDashboard+" - ";
+                      let dashboardName = req.body.originDashboard + " - ";
                       dashboardName += user.first_name === "REGION" ? user.last_name : user.first_name;
 
                       const newDashboard = await client.query("INSERT INTO report_dashboard (created_at,updated_at,name,description,creator_id,parameters," +
@@ -403,7 +403,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 user_id: user.id
               };
               Request(options, function (error, response, addGroupBody) {
-                if(addGroupBody.message || error) return gcallback(addGroupBody.message || error);
+                if (addGroupBody.message || error) return gcallback(addGroupBody.message || error);
                 options.url = config.metabase.uri + config.collections;
                 options.body = {
                   name: user.first_name,
@@ -425,7 +425,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
                       })
                     });
                     options.method = 'POST';
-                  }else {
+                  } else {
                     collection = collectionBody;
                   }
 
@@ -436,7 +436,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                     jsonToParse = JSON.stringify(jsonToParse);
 
-                    let dashboardName = req.body.originDashboard+" - ";
+                    let dashboardName = req.body.originDashboard + " - ";
                     dashboardName += user.first_name === "REGION" ? user.last_name : user.first_name;
 
                     const newDashboard = await client.query("INSERT INTO report_dashboard (created_at,updated_at,name,description,creator_id,parameters," +
@@ -521,27 +521,25 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 });
               })
             }
-          }else
-          {
-            console.log("user discarted ---->",user);
+          } else {
+            console.log("user discarted ---->", user);
             gcallback();
           }
         }, (err) => {
           console.log(err);
-          if(err) return res.status(400).json({message:"Error_creating_collections", error: err});
+          if (err) return res.status(400).json({message: "Error_creating_collections", error: err});
           client.end();
           return res.status(200).json("Dashboards clonated sucessfully");
         })
 
       })
     }
-    else{
+    else {
       console.log(metaBody);
       client.end();
       return res.status(400).json(metaBody);
     }
   });
-
 };
 
 /*
