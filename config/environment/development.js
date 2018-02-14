@@ -1,25 +1,4 @@
 'use strict';
-const os = require('os');
-const ifaces = os.networkInterfaces();
-let serverIp;
-
-Object.keys(ifaces).forEach(function (ifname) {
-  var alias = 0;
-
-  ifaces[ifname].forEach(function (iface) {
-    if ('IPv4' !== iface.family || iface.internal !== false) {
-      return;
-    }
-
-    if (alias >= 1) {
-      serverIp = iface.address;
-    } else {
-      serverIp = iface.address;
-    }
-    ++alias;
-  });
-});
-
 // Development specific configuration
 // ==================================
 module.exports = {
@@ -35,7 +14,7 @@ module.exports = {
   addUsertoGroup: "/api/permissions/membership",
   collections:"/api/collection/",
   dashboard: "/api/dashboard/",
-  generalPassword: "Hol@.Mund0",
+  generalPassword: "C@nalesBAC",
 
   db: {
     host: "dev-kemok-bac.cg9u5bhsoxjc.us-east-1.rds.amazonaws.com",

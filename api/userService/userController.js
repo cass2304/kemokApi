@@ -85,18 +85,38 @@ module.exports.createNewAgency = async (req, res) => {
                 };
                 Request(options, async function (error, response, collectionBody) {
                   if (error) return callback(error);
-                  if (collectionBody) {
-                    await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collectionBody.id}/read/', ${groupsBody.id})`);
+                  let collection;
+                  if (collectionBody.errors) {
+                    options.url = config.metabase.uri + config.collections;
+                    options.method = 'GET';
+                    delete options.body;
+                    await Request(options, async function (error, response, cBody) {
+                      collection = _.find(cBody, (col) => {
+                        if (col.slug.indexOf(user.toLowerCase()) > -1)
+                          return col;
+                      })
+                    });
+                    options.method = 'POST';
+                  }else {
+                    collection = collectionBody;
+                  }
+
+                  if (collection) {
+                    await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupsBody.id})`);
 
                     let jsonToParse = JSON.parse(dashboardInfo.rows[0].parameters);
 
                     jsonToParse = JSON.stringify(jsonToParse);
 
+                    let dashboardName = req.body.originDashboard + " - ";
+
+                    dashboardName += user;
+
                     const newDashboard = await client.query("INSERT INTO report_dashboard (created_at,updated_at,name,description,creator_id,parameters,"+
                       "points_of_interest,caveats,show_in_getting_started,public_uuid,made_public_by_id,"+
                       "enable_embedding,embedding_params,archived,position)"+
                       "VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15 ) RETURNING id", [new Date(dashboardInfo.rows[0].created_at).toISOString(),new Date(dashboardInfo.rows[0].updated_at).toISOString(),
-                      "Dashboard "+user, dashboardInfo.rows[0].description, dashboardInfo.rows[0].creator_id, jsonToParse, dashboardInfo.rows[0].points_of_interest,dashboardInfo.rows[0].caveats,
+                      dashboardName, dashboardInfo.rows[0].description, dashboardInfo.rows[0].creator_id, jsonToParse, dashboardInfo.rows[0].points_of_interest,dashboardInfo.rows[0].caveats,
                       dashboardInfo.rows[0].show_in_getting_started, dashboardInfo.rows[0].public_uuid, dashboardInfo.rows[0].made_public_by_id, dashboardInfo.rows[0].enable_embedding ,
                       dashboardInfo.rows[0].embedding_params, dashboardInfo.rows[0].archived, dashboardInfo.rows[0].position ]);
 
@@ -240,7 +260,6 @@ module.exports.createAgencyFromDB = async (req, res) => {
       Request(options, function (error, response, gBody) {
 
         _async.eachSeries(users.rows, (user, gcallback) => {
-          console.log("1 ----> ",user);
 
           if (user.first_name.length <= 3 || user.first_name === "REGION") {
 
@@ -269,14 +288,30 @@ module.exports.createAgencyFromDB = async (req, res) => {
                   };
                   Request(options, async function (error, response, collectionBody) {
                     if (error) return gcallback(error);
-                    if (collectionBody) {
-                      client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collectionBody.id}/read/', ${groupsBody.id})`);
+                    let collection;
+                    if (collectionBody.errors) {
+                      options.url = config.metabase.uri + config.collections;
+                      options.method = 'GET';
+                      delete options.body;
+                      await Request(options, async function (error, response, cBody) {
+                        collection = _.find(cBody, (col) => {
+                          if (col.slug.indexOf(user.toLowerCase()) > -1)
+                            return col;
+                        })
+                      });
+                      options.method = 'POST';
+                    }else {
+                      collection = collectionBody;
+                    }
+
+                    if (collection) {
+                      client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupsBody.id})`);
 
                       let jsonToParse = JSON.parse(dashboardInfo.rows[0].parameters);
 
                       jsonToParse = JSON.stringify(jsonToParse);
 
-                      let dashboardName = "Dashboard ";
+                      let dashboardName = req.body.originDashboard+" - ";
                       dashboardName += user.first_name === "REGION" ? user.last_name : user.first_name;
 
                       const newDashboard = await client.query("INSERT INTO report_dashboard (created_at,updated_at,name,description,creator_id,parameters," +
@@ -288,7 +323,6 @@ module.exports.createAgencyFromDB = async (req, res) => {
                         dashboardInfo.rows[0].embedding_params, dashboardInfo.rows[0].archived, dashboardInfo.rows[0].position]);
 
                       _async.eachSeries(queryResponse.rows, (card, cardsCallback) => {
-                        console.log("2 -----> ",card);
 
                         let newQuery = JSON.parse(card.dataset_query);
 
@@ -302,7 +336,6 @@ module.exports.createAgencyFromDB = async (req, res) => {
                         originView = originView.split("\n")[0];
 
                         _async.eachSeries(Object.keys(newQuery.native.template_tags), (key, callb) => {
-                          console.log("3 -----> ",key);
                           client.query("Select b.id from metabase_table a inner join metabase_field b ON a.id = b.table_id where a.name = $1 and b.name = $2 ", [originView, key], (err, resp) => {
                             if (err) callb(err);
                             if (resp.rows.length > 0)
@@ -329,7 +362,6 @@ module.exports.createAgencyFromDB = async (req, res) => {
                               card.embedding_params, card.cache_ttl, metadataResult], (err, res) => {
                               if (err) return cardsCallback(err);
                               if (res) {
-                                console.log("1 INSERT ----> ",res);
                                 let parameterMappings = JSON.parse(card.parameter_mappings);
                                 let changedParameterMappings = [];
 
@@ -345,7 +377,6 @@ module.exports.createAgencyFromDB = async (req, res) => {
                                   [new Date(card.created_at).toISOString(), new Date(card.updated_at).toISOString(), card.sizeX, card.sizeY, card.row,
                                     card.col, res.rows[0].id, newDashboard.rows[0].id, changedParameterMappings,
                                     card.vis_set_dashboard_card], (err, res) => {
-                                    console.log("2 INSERT ----> ",res);
                                     if (err) return cardsCallback(err);
                                     return cardsCallback();
                                   });
@@ -365,12 +396,14 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 })
               })
             } else {
+              options.method = 'POST';
               options.url = config.metabase.uri + config.addUsertoGroup;
               options.body = {
                 group_id: group.id,
                 user_id: user.id
               };
               Request(options, function (error, response, addGroupBody) {
+                if(addGroupBody.message || error) return gcallback(addGroupBody.message || error);
                 options.url = config.metabase.uri + config.collections;
                 options.body = {
                   name: user.first_name,
@@ -379,14 +412,31 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 };
                 Request(options, async function (error, response, collectionBody) {
                   if (error) return gcallback(error);
-                  if (collectionBody) {
-                    await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collectionBody.id}/read/', ${group.id})`);
+                  let collection;
+
+                  if (collectionBody.errors) {
+                    options.url = config.metabase.uri + config.collections;
+                    options.method = 'GET';
+                    delete options.body;
+                    await Request(options, async function (error, response, cBody) {
+                      collection = _.find(cBody, (col) => {
+                        if (col.slug.indexOf(user.first_name.toLowerCase()) > -1)
+                          return col;
+                      })
+                    });
+                    options.method = 'POST';
+                  }else {
+                    collection = collectionBody;
+                  }
+
+                  if (collection) {
+                    await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${group.id})`);
 
                     let jsonToParse = JSON.parse(dashboardInfo.rows[0].parameters);
 
                     jsonToParse = JSON.stringify(jsonToParse);
 
-                    let dashboardName = "Dashboard ";
+                    let dashboardName = req.body.originDashboard+" - ";
                     dashboardName += user.first_name === "REGION" ? user.last_name : user.first_name;
 
                     const newDashboard = await client.query("INSERT INTO report_dashboard (created_at,updated_at,name,description,creator_id,parameters," +
@@ -398,7 +448,6 @@ module.exports.createAgencyFromDB = async (req, res) => {
                       dashboardInfo.rows[0].embedding_params, dashboardInfo.rows[0].archived, dashboardInfo.rows[0].position]);
 
                     _async.eachSeries(queryResponse.rows, (card, cardsCallback) => {
-                      console.log("4 -----> ",card);
 
                       let newQuery = JSON.parse(card.dataset_query);
 
@@ -412,7 +461,6 @@ module.exports.createAgencyFromDB = async (req, res) => {
                       originView = originView.split("\n")[0];
 
                       _async.eachSeries(Object.keys(newQuery.native.template_tags), (key, callb) => {
-                        console.log("5 -----> ",key);
                         client.query("Select b.id from metabase_table a inner join metabase_field b ON a.id = b.table_id where a.name = $1 and b.name = $2 ", [originView, key], (err, resp) => {
                           if (err) callb(err);
                           if (resp.rows.length > 0)
@@ -479,7 +527,8 @@ module.exports.createAgencyFromDB = async (req, res) => {
             gcallback();
           }
         }, (err) => {
-          if(err) return res.status(400).json("Error_creating_collections");
+          console.log(err);
+          if(err) return res.status(400).json({message:"Error_creating_collections", error: err});
           client.end();
           return res.status(200).json("Dashboards clonated sucessfully");
         })
