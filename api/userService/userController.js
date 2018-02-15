@@ -59,7 +59,23 @@ module.exports.createNewAgency = async (req, res) => {
           };
 
           Request(options, function (error, response, groupsBody) {
-            if (error || _.isString(groupsBody)) return callback(error || groupsBody);
+            if (error) return callback(error);
+            let groupId;
+            if (_.isString(groupsBody)) {
+              options.url = config.metabase.uri + config.groups;
+              options.method = 'GET';
+              delete options.body;
+              Request(options, async function (error, response, gBody) {
+                groupId = _.find(gBody, (grp) => {
+                  if (grp.name.indexOf(user.email.split("@")[0].toLowerCase()) > -1)
+                    return grp;
+                })
+              });
+              options.method = 'POST';
+            } else {
+              groupId = groupsBody;
+            }
+
             options.url = config.metabase.uri + config.users;
             options.body = {
               first_name: user,
@@ -72,14 +88,14 @@ module.exports.createNewAgency = async (req, res) => {
               if (error) return callback(error);
               options.url = config.metabase.uri + config.addUsertoGroup;
               options.body = {
-                group_id: groupsBody.id,
+                group_id: groupId.id,
                 user_id: userBody.id
               };
               Request(options, function (error, response, addGroupBody) {
-                if (error) return callback(error);
+                if (error) console.log("user already belong to that group");
                 options.url = config.metabase.uri + config.collections;
                 options.body = {
-                  name: user,
+                  name: user+" - "+req.body.originCollection,
                   color: getRandomColor(),
                   description: "Collection for agency " + user,
                 };
@@ -102,7 +118,7 @@ module.exports.createNewAgency = async (req, res) => {
                   }
 
                   if (collection) {
-                    await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupsBody.id})`);
+                    await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupId.id})`);
 
                     let jsonToParse = JSON.parse(dashboardInfo.rows[0].parameters);
 
@@ -128,10 +144,18 @@ module.exports.createNewAgency = async (req, res) => {
 
                       cardName = cardName.replace(req.body.originView, user);
 
-                      newQuery.native.query = newQuery.native.query.replace(req.body.originView, user);
+                      while(newQuery.native.query.indexOf(req.body.originView) > -1 ){
+                        newQuery.native.query = newQuery.native.query.replace(req.body.originView, user);
+                      }
 
                       let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user+"_"), newQuery.native.query.length).split(" ")[0];
                       originView = originView.split("\n")[0];
+
+                      client.query(`SELECT db_id, schema, id from metabase_table where name = $1`,[originView], (err, resp) => {
+                        client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/db/${resp.rows[0].db_id}/schema/${resp.rows[0].schema}/table/${resp.rows[0].id}/',${groupId.id})`, (err, res) => {
+                          if (err) console.log("permission already exists on db");
+                        });
+                      });
 
                       _async.each(Object.keys(newQuery.native.template_tags), (key, callb) => {
                         client.query("Select b.id from metabase_table a inner join metabase_field b ON a.id = b.table_id where a.name = $1 and b.name = $2 ", [originView, key], (err, resp) => {
@@ -222,16 +246,23 @@ module.exports.createNewAgency = async (req, res) => {
 
 module.exports.createAgencyFromDB = async (req, res) => {
 
+  // Conection to the database and search in the database for the collection and dashboard id to clone. With those ids we look into the database for the questions to clone.
+
   const client = new Client(config.dbMetabase);
 
   await client.connect();
 
   const collectionId = await client.query(`SELECT id from collection where name = '${req.body.originCollection}' `);
 
+  if(collectionId.rows.length === 0) return res.status(404).json({message: "origin_collection_does_not_exists"});
+
   const dashboardInfo = await client.query(`SELECT * from report_dashboard where name = '${req.body.originDashboard}' `);
+
+  if(dashboardInfo.rows.length === 0) return res.status(404).json({message: "origin_dashboard_does_not_exists"});
 
   const queryResponse = await client.query(`SELECT *, a.visualization_settings vis_set_dashboard_card, b.visualization_settings vis_set_report_card from report_card B INNER JOIN report_dashboardcard A on A.card_id = B.id where b.collection_id = ${collectionId.rows[0].id} and dashboard_id = ${dashboardInfo.rows[0].id}`);
 
+  if(queryResponse.rows.length === 0 ) return res.status(404).json({message: "no_questions_to_clone"});
 
   let varToSend = JSON.stringify(req.body.username).replace("[", "").replace("]", "");
 
@@ -239,7 +270,12 @@ module.exports.createAgencyFromDB = async (req, res) => {
     varToSend = varToSend.replace("\"", "'");
   }
 
+  // look in the database for the user to create the dashboard.
   const users = await client.query("SELECT * FROM core_user where is_superuser = false and is_active = true and first_name in  (" + varToSend + ")  order by first_name asc limit 4");
+
+  if (users.rows.length === 0) return res.status(404).json({message: "user_does_not_exist_on_db"});
+
+  // We set the parameters to authenticate with the metabase api.
 
   options.url = config.metabase.uri + config.auth;
   options.body = {
@@ -247,24 +283,28 @@ module.exports.createAgencyFromDB = async (req, res) => {
     password: config.password
   };
 
-  if (users.rows.length === 0) return res.status(404).json({message: "user_does_not_exist_on_db"});
-
   Request(options, function (error, response, metaBody) {
     if (error) return res.status(400).json({message: "Error on auth with metabase service"});
 
+    //if metabody has id that means that the user authenticated correctly and now we can start the process.
     if (metaBody.id) {
+      // We set the parameters to fetch all the groups on the system.
       options.method = 'GET';
       options.url = config.metabase.uri + config.groups;
       options.headers['X-Metabase-Session'] = metaBody.id;
 
       Request(options, function (error, response, gBody) {
 
+        //Once we have the group information we start the user cycle to start the clonning process.
         _async.eachSeries(users.rows, (user, gcallback) => {
+
+          // to avoid creating dashboard from users that are not agencies or regions we limit the user first name to 3 or to the word REGION.
 
           if (user.first_name.length <= 3 || user.first_name === "REGION") {
 
             let group = _.find(gBody, {name: user.email.split("@")[0]});
 
+            // if user group doesn't exist we have to create the group and assign that user to that new group.
             if (group === undefined) {
               options.method = 'POST';
               options.url = config.metabase.uri + config.groups;
@@ -273,19 +313,39 @@ module.exports.createAgencyFromDB = async (req, res) => {
               };
 
               Request(options, function (error, response, groupsBody) {
-                if (error || _.isString(groupsBody)) return gcallback(error || groupsBody);
+                if (error) return gcallback(error);
+                let groupId;
+                //this is a double check in case of something went wrong before, i the result of the post is a string that means that the user group did exist and i look for it to assign it.
+                if (_.isString(groupsBody)) {
+                  options.url = config.metabase.uri + config.groups;
+                  options.method = 'GET';
+                  delete options.body;
+                  Request(options, async function (error, response, gBody) {
+                    groupId = _.find(gBody, (grp) => {
+                      if (grp.name.indexOf(user.email.split("@")[0].toLowerCase()) > -1)
+                        return grp;
+                    })
+                  });
+                  options.method = 'POST';
+                } else {
+                  groupId = groupsBody;
+                }
                 options.url = config.metabase.uri + config.addUsertoGroup;
                 options.body = {
-                  group_id: groupsBody.id,
+                  group_id: groupId.id,
                   user_id: user.id
                 };
+
+                // we assign the user to the group.
                 Request(options, function (error, response, addGroupBody) {
+                  if (error) console.log("user already belong to that group");
                   options.url = config.metabase.uri + config.collections;
                   options.body = {
                     name: user.first_name + " " + user.last_name,
                     color: getRandomColor(),
                     description: "Collection for agency " + user.first_name + " " + user.last_name,
                   };
+                  // we create the new collection or if the collection exists we use the current collection id.
                   Request(options, async function (error, response, collectionBody) {
                     if (error) return gcallback(error);
                     let collection;
@@ -305,7 +365,8 @@ module.exports.createAgencyFromDB = async (req, res) => {
                     }
 
                     if (collection) {
-                      client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupsBody.id})`);
+                      // we manually add the group permissions to the database.
+                      client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupId.id})`);
 
                       let jsonToParse = JSON.parse(dashboardInfo.rows[0].parameters);
 
@@ -313,6 +374,8 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                       let dashboardName = req.body.originDashboard + " - ";
                       dashboardName += user.first_name === "REGION" ? user.last_name : user.first_name;
+
+                      // We first create the dashboard by cloning all the origin dashboard properties and only changing the name.
 
                       const newDashboard = await client.query("INSERT INTO report_dashboard (created_at,updated_at,name,description,creator_id,parameters," +
                         "points_of_interest,caveats,show_in_getting_started,public_uuid,made_public_by_id," +
@@ -324,16 +387,31 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                       _async.eachSeries(queryResponse.rows, (card, cardsCallback) => {
 
+                        // after we created the new dashboard we create the questions and associate them with the dashboard and also we create the db view permissions.
+
                         let newQuery = JSON.parse(card.dataset_query);
 
-                        newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.email.split("@")[0]);
+                        // we change the origin view name with the new view name.
+
+                        while(newQuery.native.query.indexOf(req.body.originView) > -1 ){
+                          newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.email.split("@")[0]);
+                        }
 
                         let cardName = card.name;
 
                         cardName = cardName.replace(req.body.originView, user.email.split("@")[0]);
 
+
                         let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user.email.split("@")[0] + "_"), newQuery.native.query.length).split(" ")[0];
                         originView = originView.split("\n")[0];
+
+                        client.query(`SELECT db_id, schema, id from metabase_table where name = $1`, [originView], (err, resp) => {
+                          client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/db/${resp.rows[0].db_id}/schema/${resp.rows[0].schema}/table/${resp.rows[0].id}/',${groupId.id})`, (err, res) => {
+                            if (err) console.log("permission already exists on db");
+                          });
+                        });
+
+                        // this is where we map every question variable.
 
                         _async.eachSeries(Object.keys(newQuery.native.template_tags), (key, callb) => {
                           client.query("Select b.id from metabase_table a inner join metabase_field b ON a.id = b.table_id where a.name = $1 and b.name = $2 ", [originView, key], (err, resp) => {
@@ -351,6 +429,8 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                           metadataResult = JSON.stringify(metadataResult);
 
+                          // we create the question, clone all the similar information and we only change the collection id and the query with the new db view.
+
                           client.query("INSERT INTO report_card (created_at, updated_at, name, description, display, dataset_query," +
                             "visualization_settings, creator_id, database_id, table_id, query_type," +
                             "archived, collection_id, public_uuid, made_public_by_id, enable_embedding," +
@@ -365,12 +445,15 @@ module.exports.createAgencyFromDB = async (req, res) => {
                                 let parameterMappings = JSON.parse(card.parameter_mappings);
                                 let changedParameterMappings = [];
 
+                                // this is where we map all the card parameters.
                                 _.forEach(parameterMappings, (parameter) => {
                                   parameter.card_id = res.rows[0].id;
                                   changedParameterMappings.push(parameter);
                                 });
 
                                 changedParameterMappings = JSON.stringify(changedParameterMappings);
+
+                                // after we map we have to put that question into the dashboard, we preserve everything the same and we only change the origin dashboard id with the new dashboard id and the mapped parameters.
 
                                 client.query("INSERT INTO report_dashboardcard (created_at,updated_at,\"sizeX\",\"sizeY\",row,col,card_id,dashboard_id,parameter_mappings,visualization_settings)" +
                                   "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
@@ -396,6 +479,9 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 })
               })
             } else {
+
+              // This is the same process but only not creating the group because already exists.
+
               options.method = 'POST';
               options.url = config.metabase.uri + config.addUsertoGroup;
               options.body = {
@@ -403,10 +489,10 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 user_id: user.id
               };
               Request(options, function (error, response, addGroupBody) {
-                if (addGroupBody.message || error) return gcallback(addGroupBody.message || error);
+                if (error) console.log("user already belong to that group");
                 options.url = config.metabase.uri + config.collections;
                 options.body = {
-                  name: user.first_name,
+                  name: user.first_name+" - "+req.body.originCollection,
                   color: getRandomColor(),
                   description: "Collection for agency " + user.first_name,
                 };
@@ -451,7 +537,9 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                       let newQuery = JSON.parse(card.dataset_query);
 
-                      newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.email.split("@")[0]);
+                      while(newQuery.native.query.indexOf(req.body.originView) > -1 ){
+                        newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.email.split("@")[0]);
+                      }
 
                       let cardName = card.name;
 
@@ -459,6 +547,12 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                       let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user.email.split("@")[0] + "_"), newQuery.native.query.length).split(" ")[0];
                       originView = originView.split("\n")[0];
+
+                      client.query(`SELECT db_id, schema, id from metabase_table where name = $1`,[originView], (err, resp) => {
+                        client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/db/${resp.rows[0].db_id}/schema/${resp.rows[0].schema}/table/${resp.rows[0].id}/',${group.id})`, (err, res) => {
+                          if (err) console.log("permission already exists on db");
+                        });
+                      });
 
                       _async.eachSeries(Object.keys(newQuery.native.template_tags), (key, callb) => {
                         client.query("Select b.id from metabase_table a inner join metabase_field b ON a.id = b.table_id where a.name = $1 and b.name = $2 ", [originView, key], (err, resp) => {
@@ -596,6 +690,7 @@ module.exports.createNewAgencyByBatch = async function (req, res) {
             };
 
             Request(options, function (error, response, addGroupBody) {
+              if (error) console.log("user already belong to that group");
               if (error) return callback(error);
               callback()
             })
@@ -663,6 +758,7 @@ module.exports.createUserRegionByBatch = async function (req, res) {
             };
 
             Request(options, function (error, response, addGroupBody) {
+              if (error) console.log("user already belong to that group");
               if (error) return callback(error);
               callback()
             })
