@@ -1,7 +1,7 @@
 const Request = require('request');
 const _ = require('lodash');
 const _async = require('async');
-const config = require('../../config/environment/development');
+const config = require('../../config/environment/production');
 const {Client} = require('pg');
 const options = {
   method: 'POST',

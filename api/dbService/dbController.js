@@ -1,4 +1,4 @@
-const config = require('../../config/environment/development');
+const config = require('../../config/environment/production');
 const {Client} = require('pg');
 const _async = require('async');
 const dateRegex = /([12]\d{3}-(0[1-9]|1[0-2]))/

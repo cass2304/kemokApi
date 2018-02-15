@@ -25,7 +25,7 @@ module.exports = {
   },
 
   dbMetabase: {
-    host: "aa9047ajg1b4c.cg9u5bhsoxjc.us-east-1.rds.amazonaws.com",
+    host: "aa1ufiml1cmxajv.cg9u5bhsoxjc.us-east-1.rds.amazonaws.com",
     port: 5432,
     user: "kemokadmin",
     password: "$q%$=0#TyCI1.",
