@@ -342,7 +342,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
                   if (error) console.log("user already belong to that group");
                   options.url = config.metabase.uri + config.collections;
                   options.body = {
-                    name: user.first_name + " " + user.last_name,
+                    name: user.first_name+" "+user.last_name+" - "+req.body.originCollection,
                     color: getRandomColor(),
                     description: "Collection for agency " + user.first_name + " " + user.last_name,
                   };
@@ -493,7 +493,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 if (error) console.log("user already belong to that group");
                 options.url = config.metabase.uri + config.collections;
                 options.body = {
-                  name: user.first_name+" - "+req.body.originCollection,
+                  name: user.first_name+" "+user.last_name+" - "+req.body.originCollection,
                   color: getRandomColor(),
                   description: "Collection for agency " + user.first_name,
                 };
