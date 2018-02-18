@@ -271,8 +271,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
   }
 
   // look in the database for the user to create the dashboard.
-  const users = await client.query("SELECT * FROM core_user where is_superuser = false and is_active = true and first_name in  (" + varToSend + ") or last_name in  (" + varToSend + ")  order by first_name asc limit 4");
-
+  const users = await client.query("SELECT * FROM core_user where is_superuser = false and is_active = true and LOWER(first_name) in (" + varToSend.toLowerCase() + ") or LOWER(last_name) in (" + varToSend.toLowerCase() + ") order by first_name asc limit 4");
   if (users.rows.length === 0) return res.status(404).json({message: "user_does_not_exist_on_db"});
 
   // We set the parameters to authenticate with the metabase api.
@@ -302,8 +301,10 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
           if (user.first_name.length <= 3 || user.first_name === "REGION") {
 
-            let group = _.find(gBody, {name: user.email.split("@")[0]});
-            group === undefined ? group = _.find(gBody, {name: user.last_name}) : null;
+            let group = _.find(gBody, (g) => {
+              if ((g.name.toLowerCase() === user.first_name.toLowerCase()) || g.name.toLowerCase() === user.last_name.toLowerCase())
+              return g
+            });
 
             // if user group doesn't exist we have to create the group and assign that user to that new group.
             if (group === undefined) {
