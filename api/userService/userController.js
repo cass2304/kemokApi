@@ -155,14 +155,16 @@ module.exports.createNewAgency = async (req, res) => {
 
                       let cardName = card.name;
 
-                      cardName = cardName.replace(req.body.originView, user);
+                      cardName = cardName.replace(req.body.originView, user.toLowerCase());
 
                       while(newQuery.native.query.indexOf(req.body.originView) > -1 ){
-                        newQuery.native.query = newQuery.native.query.replace(req.body.originView, user);
+                        newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.toLowerCase());
                       }
 
-                      let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user+"_"), newQuery.native.query.length).split(" ")[0];
-                      originView = originView.split("\n")[0];
+                      let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user.toLowerCase()+"_"), newQuery.native.query.length).split(" ")[0];
+                      originView = originView.split("\n")[0].toLowerCase();
+                      originView = originView.split(".")[0];
+
 
                       client.query(`SELECT db_id, schema, id from metabase_table where name = $1`,[originView], (err, resp) => {
                         client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/db/${resp.rows[0].db_id}/schema/${resp.rows[0].schema}/table/${resp.rows[0].id}/',${groupId.id})`, (err, res) => {
@@ -414,16 +416,16 @@ module.exports.createAgencyFromDB = async (req, res) => {
                         // we change the origin view name with the new view name.
 
                         while(newQuery.native.query.indexOf(req.body.originView) > -1 ){
-                          newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.email.split("@")[0]);
+                          newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.email.split("@")[0].toLowerCase());
                         }
 
                         let cardName = card.name;
 
                         cardName = cardName.replace(req.body.originView, user.email.split("@")[0]);
 
-
-                        let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user.email.split("@")[0] + "_"), newQuery.native.query.length).split(" ")[0];
-                        originView = originView.split("\n")[0];
+                        let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user.email.split("@")[0].toLowerCase() + "_"), newQuery.native.query.length).split(" ")[0];
+                        originView = originView.split("\n")[0].toLowerCase();
+                        originView = originView.split(".")[0];
 
                         client.query(`SELECT db_id, schema, id from metabase_table where name = $1`, [originView], (err, resp) => {
                           client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/db/${resp.rows[0].db_id}/schema/${resp.rows[0].schema}/table/${resp.rows[0].id}/',${groupId.id})`, (err, res) => {
@@ -577,6 +579,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                       let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user.email.split("@")[0].toLowerCase() + "_"), newQuery.native.query.length).split(" ")[0];
                       originView = originView.split("\n")[0].toLowerCase();
+                      originView = originView.split(".")[0];
 
                       client.query(`SELECT db_id, schema, id from metabase_table where name = $1`,[originView], (err, resp) => {
                         client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/db/${resp.rows[0].db_id}/schema/${resp.rows[0].schema}/table/${resp.rows[0].id}/',${group.id})`, (err, res) => {
