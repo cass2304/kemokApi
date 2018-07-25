@@ -1,7 +1,8 @@
 const config = require('../../config/environment/production');
 const {Client} = require('pg');
 const _async = require('async');
-const dateRegex = /([12]\d{3}-(0[1-9]|1[0-2]))/
+const dateRegex = /([12]\d{3}-(0[1-9]|1[0-2]))/;
+const _ = require('lodash');
 
 /* POSTMAN PUT BODY
 {
@@ -37,15 +38,22 @@ module.exports.updateDates = async (req, res) => {
   if(req.body.date && dateRegex.test(req.body.date)) {
     const dashboards = await client.query(`SELECT * FROM report_dashboard`)
 
-    _async.forEachOf(dashboards.rows, (dashboard, i, callback) => {
+    _async.eachOfSeries(dashboards.rows, (dashboard, i, callback) => {
       let parameters = JSON.parse(dashboard.parameters);
+      parameters = _.uniqBy(_.compact(parameters), 'slug');
 
-      _async.each(parameters, (param, callb) => {
-        if (param.type === 'date/month-year') {
-          param.default = req.body.date;
-          parameters[i] = param;
+      _async.eachSeries(parameters, (param, callb) => {
+        if(param !== null ) {
+          if (param.type === 'date/month-year') {
+            param.default = req.body.date;
+            callb();
+          }else{
+            callb();
+          }
+        }else{
+          callb();
         }
-        callb();
+
       }, (err) => {
         if (err) return callback(err);
         parameters = JSON.stringify(parameters);
