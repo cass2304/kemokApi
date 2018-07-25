@@ -58,19 +58,27 @@ module.exports.createNewAgency = async (req, res) => {
             name: user
           };
 
-          Request(options, function (error, response, groupsBody) {
+          Request(options, async function (error, response, groupsBody) {
             if (error) return callback(error);
             let groupId;
+
             if (_.isString(groupsBody)) {
               options.url = config.metabase.uri + config.groups;
               options.method = 'GET';
               delete options.body;
-              Request(options, async function (error, response, gBody) {
-                groupId = _.find(gBody, (grp) => {
-                  if (grp.name.indexOf(user.email.split("@")[0].toLowerCase()) > -1)
-                    return grp;
-                })
+
+
+              groupId = await new Promise( (resolve,reject) => {
+                Request(options, async function (error, response, gBody) {
+                  if(error) reject(error);
+                  _.find(gBody, (grp) => {
+                    console.log("grp ",grp)
+                    if (grp.name.indexOf(user.toLowerCase()) > -1)
+                      resolve( grp );
+                  })
+                });
               });
+
               options.method = 'POST';
             } else {
               groupId = groupsBody;
@@ -118,7 +126,12 @@ module.exports.createNewAgency = async (req, res) => {
                   }
 
                   if (collection) {
-                    await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupId.id})`);
+
+                    try {
+                      await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupId.id})`);
+                    }catch (error){
+                      console.log("User already has permission");
+                    }
 
                     let jsonToParse = JSON.parse(dashboardInfo.rows[0].parameters);
 
@@ -271,8 +284,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
   }
 
   // look in the database for the user to create the dashboard.
-  const users = await client.query("SELECT * FROM core_user where is_superuser = false and is_active = true and first_name in  (" + varToSend + ")  order by first_name asc limit 4");
-
+  const users = await client.query("SELECT * FROM core_user where is_superuser = false and is_active = true and (LOWER(first_name) in (" + varToSend.toLowerCase() + ") or LOWER(last_name) in (" + varToSend.toLowerCase() + ")) order by first_name asc limit 4");
   if (users.rows.length === 0) return res.status(404).json({message: "user_does_not_exist_on_db"});
 
   // We set the parameters to authenticate with the metabase api.
@@ -302,10 +314,14 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
           if (user.first_name.length <= 3 || user.first_name === "REGION") {
 
-            let group = _.find(gBody, {name: user.email.split("@")[0]});
+            let group = _.find(gBody, (g) => {
+              if ((g.name.toLowerCase() === user.first_name.toLowerCase()) || g.name.toLowerCase() === user.last_name.toLowerCase())
+                return g
+            });
 
             // if user group doesn't exist we have to create the group and assign that user to that new group.
             if (group === undefined) {
+              console.log("undefined group");
               options.method = 'POST';
               options.url = config.metabase.uri + config.groups;
               options.body = {
@@ -315,7 +331,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
               Request(options, function (error, response, groupsBody) {
                 if (error) return gcallback(error);
                 let groupId;
-                //this is a double check in case of something went wrong before, i the result of the post is a string that means that the user group did exist and i look for it to assign it.
+                //this is a double check in case of something went wrong before, the result of the post is a string that means that the user group did exist and i look for it to assign it.
                 if (_.isString(groupsBody)) {
                   options.url = config.metabase.uri + config.groups;
                   options.method = 'GET';
@@ -341,7 +357,7 @@ module.exports.createAgencyFromDB = async (req, res) => {
                   if (error) console.log("user already belong to that group");
                   options.url = config.metabase.uri + config.collections;
                   options.body = {
-                    name: user.first_name + " " + user.last_name,
+                    name: user.first_name+" "+user.last_name+" - "+req.body.originCollection,
                     color: getRandomColor(),
                     description: "Collection for agency " + user.first_name + " " + user.last_name,
                   };
@@ -366,7 +382,12 @@ module.exports.createAgencyFromDB = async (req, res) => {
 
                     if (collection) {
                       // we manually add the group permissions to the database.
-                      client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupId.id})`);
+
+                      try {
+                        await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${groupId.id})`);
+                      }catch (error){
+                        console.log("User already has permission");
+                      }
 
                       let jsonToParse = JSON.parse(dashboardInfo.rows[0].parameters);
 
@@ -479,7 +500,6 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 })
               })
             } else {
-
               // This is the same process but only not creating the group because already exists.
 
               options.method = 'POST';
@@ -488,11 +508,12 @@ module.exports.createAgencyFromDB = async (req, res) => {
                 group_id: group.id,
                 user_id: user.id
               };
+
               Request(options, function (error, response, addGroupBody) {
-                if (error) console.log("user already belong to that group");
+                if (error || addGroupBody.message) console.log("user already belong to that group");
                 options.url = config.metabase.uri + config.collections;
                 options.body = {
-                  name: user.first_name+" - "+req.body.originCollection,
+                  name: user.first_name+" "+user.last_name+" - "+req.body.originCollection,
                   color: getRandomColor(),
                   description: "Collection for agency " + user.first_name,
                 };
@@ -504,19 +525,29 @@ module.exports.createAgencyFromDB = async (req, res) => {
                     options.url = config.metabase.uri + config.collections;
                     options.method = 'GET';
                     delete options.body;
-                    await Request(options, async function (error, response, cBody) {
-                      collection = _.find(cBody, (col) => {
-                        if (col.slug.indexOf(user.first_name.toLowerCase()) > -1)
-                          return col;
-                      })
+
+                    collection = await new Promise( (resolve,reject) => {
+                      Request(options, async function (error, response, cBody) {
+                        if(error) reject(error);
+                        _.find(cBody, (col) => {
+                          if (col.slug.indexOf(user.first_name.toLowerCase()) > -1)
+                            resolve (col);
+                        })
+                      });
                     });
+
                     options.method = 'POST';
                   } else {
                     collection = collectionBody;
                   }
 
                   if (collection) {
-                    await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${group.id})`);
+
+                    try {
+                      await client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/collection/${collection.id}/read/', ${group.id})`)
+                    }catch (error){
+                      console.log("User already has permission");
+                    }
 
                     let jsonToParse = JSON.parse(dashboardInfo.rows[0].parameters);
 
@@ -538,15 +569,15 @@ module.exports.createAgencyFromDB = async (req, res) => {
                       let newQuery = JSON.parse(card.dataset_query);
 
                       while(newQuery.native.query.indexOf(req.body.originView) > -1 ){
-                        newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.email.split("@")[0]);
+                        newQuery.native.query = newQuery.native.query.replace(req.body.originView, user.email.split("@")[0].toLowerCase());
                       }
 
                       let cardName = card.name;
 
                       cardName = cardName.replace(req.body.originView, user.email.split("@")[0]);
 
-                      let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user.email.split("@")[0] + "_"), newQuery.native.query.length).split(" ")[0];
-                      originView = originView.split("\n")[0];
+                      let originView = newQuery.native.query.slice(newQuery.native.query.indexOf(user.email.split("@")[0].toLowerCase() + "_"), newQuery.native.query.length).split(" ")[0];
+                      originView = originView.split("\n")[0].toLowerCase();
 
                       client.query(`SELECT db_id, schema, id from metabase_table where name = $1`,[originView], (err, resp) => {
                         client.query(`INSERT INTO permissions (object, group_id) VALUES ( '/db/${resp.rows[0].db_id}/schema/${resp.rows[0].schema}/table/${resp.rows[0].id}/',${group.id})`, (err, res) => {
@@ -620,12 +651,11 @@ module.exports.createAgencyFromDB = async (req, res) => {
             gcallback();
           }
         }, (err) => {
-          console.log(err);
+          console.log("Some error ? ",err);
           if (err) return res.status(400).json({message: "Error_creating_collections", error: err});
           client.end();
           return res.status(200).json("Dashboards clonated sucessfully");
         })
-
       })
     }
     else {
